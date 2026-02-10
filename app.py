@@ -1,105 +1,121 @@
 import streamlit as st
-import matplotlib.pyplot as plt
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import requests
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="SMK YATIRIM | Karbon Portalı", layout="wide")
+# --- AB STANDARTLARI VE GÖRSEL TEMA ---
+AB_STANDARDS = {
+    "Yakıt Tipleri": {
+        "Doğalgaz (MWh)": 0.202,
+        "Linyit Kömürü (Ton)": 1.012,
+        "İthal Kömür (Ton)": 2.420,
+        "Motorin (Litre)": 0.00268,
+        "Fuel-Oil (Ton)": 3.120
+    },
+    "Sektörel Katsayılar": {
+        "Demir-Çelik": 1.9, "Alüminyum": 4.5, "Çimento": 0.9, "Gübre": 2.1, "Hidrojen": 11.0
+    }
+}
 
-# --- ANA PROGRAM ---
+st.set_page_config(page_title="SMK YATIRIM | Premium Analytics", layout="wide")
+
+# --- CUSTOM CSS (Daha şık görünüm için) ---
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #142841; color: white; }
+    </style>
+    """, unsafe_content_allowed=True)
+
 def main():
-    # Oturum Yönetimi (Giriş yapılıp yapılmadığını kontrol eder)
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
 
-    # Yan Menü Tasarımı
-    st.sidebar.title("🏢 SMK YATIRIM")
-    st.sidebar.write("Stratejik Karbon Yönetimi")
+    # Sol Panel
+    st.sidebar.markdown(f"<h1 style='text-align: center; color: #142841;'>SMK YATIRIM</h1>", unsafe_content_allowed=True)
+    st.sidebar.markdown("<p style='text-align: center; font-size: 0.8em;'>STRATEJİK ANALİZ PORTALI</p>", unsafe_content_allowed=True)
     st.sidebar.divider()
    
-    menu = ["Giriş Yap", "Ücretsiz Kayıt Ol"]
-    choice = st.sidebar.selectbox("Hesap Paneli", menu)
+    choice = st.sidebar.radio("Menü", ["Giriş Yap", "Ücretsiz Kayıt Ol"])
 
-    # --- 1. ÜCRETSİZ KAYIT EKRANI (VERİ TOPLAMA) ---
     if choice == "Ücretsiz Kayıt Ol":
-        st.title("📝 SMK Portalı'na Ücretsiz Kayıt")
-        st.write("Analiz sistemine erişmek için kurumsal profilinizi oluşturun.")
-       
-        with st.form("kayit_formu"):
-            col1, col2 = st.columns(2)
-            with col1:
-                email = st.text_input("Kurumsal E-posta")
-                sifre = st.text_input("Şifre Belirleyin", type='password')
-                firma_adi = st.text_input("Firma Tam Adı")
-            with col2:
-                telefon = st.text_input("Telefon Numarası")
-                sektor = st.selectbox("Sektör", ["Demir-Çelik", "Alüminyum", "Gübre", "Çimento", "Hidrojen", "Diğer"])
-                konum = st.text_input("Tesis Konumu (İl/İlçe)")
-           
-            submit = st.form_submit_button("Hesabı Oluştur ve Kaydet")
-
-            if submit:
-                # FORMSPREE BAĞLANTISI (Senin Kodunla)
-                formspree_url = "https://formspree.io/f/xreaepjw"
+        st.title("📝 Kurumsal Kayıt Paneli")
+        with st.container():
+            with st.form("kayit"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    email = st.text_input("E-posta")
+                    firma = st.text_input("Firma Adı")
+                with c2:
+                    tel = st.text_input("Telefon")
+                    sektor = st.selectbox("Sektör", list(AB_STANDARDS["Sektörel Katsayılar"].keys()))
                
-                veriler = {
-                    "Firma_Adi": firma_adi,
-                    "E_Posta": email,
-                    "Telefon": telefon,
-                    "Sektor": sektor,
-                    "Konum": konum
-                }
-               
-                try:
-                    resp = requests.post(formspree_url, json=veriler)
-                    if resp.status_code == 200:
-                        st.success("Bilgileriniz SMK YATIRIM veri merkezine iletildi! Şimdi 'Giriş Yap' sekmesinden devam edebilirsiniz.")
-                        st.balloons()
-                    else:
-                        st.error("Bir hata oluştu, lütfen tekrar deneyin.")
-                except:
-                    st.error("Bağlantı sağlanamadı.")
+                if st.form_submit_button("Kayıt Ol ve Analizi Başlat"):
+                    requests.post("https://formspree.io/f/xreaepjw", json={"Firma": firma, "Email": email, "Tel": tel})
+                    st.success("Kaydınız alındı. Giriş sekmesine geçebilirsiniz.")
 
-    # --- 2. GİRİŞ EKRANI ---
     elif choice == "Giriş Yap":
-        st.title("🔐 Kurumsal Giriş")
-        user = st.sidebar.text_input("E-posta")
+        st.title("🔐 Üye Portalı")
+        user = st.sidebar.text_input("Kullanıcı")
         pwd = st.sidebar.text_input("Şifre", type='password')
-       
-        if st.sidebar.button("Sisteme Giriş"):
-            if user and pwd:
-                st.session_state['logged_in'] = True
-                st.rerun()
-            else:
-                st.error("Lütfen e-posta ve şifrenizi girin.")
+        if st.sidebar.button("Sisteme Eriş"):
+            st.session_state['logged_in'] = True
+            st.rerun()
 
-    # --- 3. ANALİZ PANELİ (GİRİŞ YAPILDIKTAN SONRA) ---
     if st.session_state['logged_in']:
-        st.title("🛡️ SMK Analiz Paneli")
-        st.subheader("Karbon Risk Projeksiyonu")
+        st.title("🛡️ Stratejik Karbon Dashboard")
        
-        # Veri Girişi
-        st.sidebar.header("📊 Üretim Verileri")
-        uretim = st.sidebar.number_input("Yıllık Üretim (Ton)", value=1000)
-       
-        # Basit CBAM Hesabı
-        emisyon = uretim * 2.5 # Varsayılan katsayı
-        maliyet = emisyon * 85  # 85 Euro ETS fiyatı
-       
-        # Sonuç Kartları
-        c1, c2 = st.columns(2)
-        c1.metric("Tahmini Karbon Yükü", f"{emisyon:,.2f} tCO2")
-        c2.metric("CBAM Maliyet Riski", f"€ {maliyet:,.2f}")
-       
-        # Grafik
-        st.write("**Maliyet Artış Senaryosu (2026-2034)**")
-        yillar = [2026, 2030, 2034]
-        degerler = [maliyet * 0.025, maliget * 0.485, maliyet]
-        st.line_chart(pd.DataFrame({"Yıl": yillar, "Maliyet": degerler}).set_index("Yıl"))
-       
+        # Üst Veri Girişi
+        with st.expander("⚙️ Veri Giriş Parametreleri", expanded=True):
+            v1, v2, v3, v4 = st.columns(4)
+            prod = v1.number_input("Yıllık Üretim (Ton)", value=1000)
+            fuel_t = v2.selectbox("Yakıt Tipi", list(AB_STANDARDS["Yakıt Tipleri"].keys()))
+            fuel_a = v3.number_input("Yakıt Miktarı", value=500)
+            elec = v4.number_input("Elektrik (kWh)", value=150000)
+
+        # Hesaplamalar
+        fuel_emi = fuel_a * AB_STANDARDS["Yakıt Tipleri"][fuel_t]
+        elec_emi = (elec * 0.45) / 1000
+        total_co2 = fuel_emi + elec_emi
+        cost = total_co2 * 85
+
+        # --- GÖRSEL KARTLAR ---
+        st.divider()
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Toplam Emisyon", f"{total_co2:,.1f} tCO2")
+        m2.metric("CBAM Vergi Riski", f"€ {cost:,.0f}")
+        m3.metric("Karbon Yoğunluğu", f"{total_co2/prod:,.2f}")
+        m4.metric("ETS Tahmini", "€ 85.00", "+5.2%")
+
+        # --- PROFESYONEL GRAFİKLER ---
+        st.divider()
+        g1, g2 = st.columns(2)
+
+        with g1:
+            st.markdown("### 🎯 Emisyon Kaynakları")
+            fig_pie = px.pie(
+                values=[fuel_emi, elec_emi],
+                names=['Yakıt (Kapsam 1)', 'Elektrik (Kapsam 2)'],
+                hole=0.4,
+                color_discrete_sequence=['#142841', '#FFC000']
+            )
+            fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        with g2:
+            st.markdown("### 📈 2026-2034 Maliyet Projeksiyonu")
+            years = [2026, 2028, 2030, 2032, 2034]
+            costs = [cost * r for r in [0.025, 0.1, 0.485, 0.75, 1.0]]
+            fig_line = px.area(x=years, y=costs, labels={'x':'Yıl', 'y':'Maliyet (€)'})
+            fig_line.update_traces(line_color='#142841', fillcolor='rgba(20, 40, 65, 0.2)')
+            st.plotly_chart(fig_line, use_container_width=True)
+
         if st.sidebar.button("🔴 Güvenli Çıkış"):
             st.session_state['logged_in'] = False
             st.rerun()
 
 if __name__ == '__main__':
     main()
+
