@@ -70,7 +70,6 @@ else:
         col_harita, col_detay = st.columns([2, 1])
         
         with col_harita:
-            # Türkiye Haritası
             m = folium.Map(location=[39.0, 35.0], zoom_start=6)
             m.add_child(folium.LatLngPopup())
             harita_verisi = st_folium(m, height=400, width=700)
@@ -110,7 +109,6 @@ else:
                 pdf.cell(0, 10, tr_fix("KURUMSAL TESIS ANALIZI"), ln=True)
                 pdf.ln(5)
                 
-                # Tablo Yapısı
                 pdf.set_fill_color(240, 240, 240)
                 pdf.set_font("Arial", "B", 10)
                 pdf.cell(60, 10, "Tesis Adi", 1, 0, 'C', True)
@@ -127,5 +125,6 @@ else:
                 pdf.set_font("Arial", "B", 11)
                 pdf.cell(0, 10, tr_fix(f"TOPLAM KARBON YUKU: {toplam_co2:,} tCO2"), ln=True)
                 
-                pdf_dosyasi = pdf.output(dest="S").encode("latin-1", "ignore")
-                st.download_button("📥 PDF Raporunu Bilgisayara İndir", pdf_dosyasi, "SMK_Rapor.pdf", "application/pdf")
+                pdf_output = pdf.output(dest="S").encode("latin-1", "ignore")
+                st.download_button("📥 PDF Raporunu Bilgisayara İndir", data=pdf_output, file_name="SMK_Rapor.pdf")
+
