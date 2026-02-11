@@ -1,6 +1,5 @@
 streamlit
-matplotlib
-fpdf
 pandas
-requests
 plotly
+requests
+fpdf
