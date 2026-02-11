@@ -1,5 +1,5 @@
 
-              import streamlit as st
+import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import datetime
@@ -149,6 +149,7 @@ elif st.session_state['page'] == 'dashboard':
                 
                 pdf_out = pdf.output(dest="S").encode("latin-1", "ignore")
                 st.download_button("📥 Raporu İndir", pdf_out, "CBAM_Stratejik_Rapor.pdf")
+
 
 
 
