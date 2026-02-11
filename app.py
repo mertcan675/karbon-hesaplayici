@@ -125,6 +125,7 @@ else:
                 pdf.set_font("Arial", "B", 11)
                 pdf.cell(0, 10, tr_fix(f"TOPLAM KARBON YUKU: {toplam_co2:,} tCO2"), ln=True)
                 
-                pdf_output = pdf.output(dest="S").encode("latin-1", "ignore")
-                st.download_button("📥 PDF Raporunu Bilgisayara İndir", data=pdf_output, file_name="SMK_Rapor.pdf")
+                pdf_dosyasi = pdf.output(dest="S").encode("latin-1", "ignore")
+                st.download_button("📥 PDF Raporunu İndir", pdf_dosyasi, "SMK_Rapor.pdf")
+
 
