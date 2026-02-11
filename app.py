@@ -1,136 +1,131 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from fpdf import FPDF
 import datetime
+import folium
+from streamlit_folium import st_folium
 
-# --- TÜRKÇE KARAKTER DÖNÜŞTÜRÜCÜ ---
+# --- 1. AYARLAR ---
+st.set_page_config(page_title="SMK YATIRIM | Karbon Portalı", layout="wide")
+
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+if 'user_data' not in st.session_state:
+    st.session_state['user_data'] = {"firma": "", "logo_bytes": None, "tesisler": []}
+
 def tr_fix(text):
     maps = {"İ": "I", "ı": "i", "Ş": "S", "ş": "s", "Ğ": "G", "ğ": "g", "Ü": "U", "ü": "u", "Ö": "O", "ö": "o", "Ç": "C", "ç": "c"}
-    for key, val in maps.items():
-        text = str(text).replace(key, val)
+    for key, val in maps.items(): text = str(text).replace(key, val)
     return text
 
-# --- PROFESYONEL RAPOR SINIFI ---
-class SMK_Report(FPDF):
-    def header(self):
-        # Kurumsal Üst Bant
-        self.set_fill_color(10, 30, 60) # Koyu Lacivert
-        self.rect(0, 0, 210, 35, 'F')
-        self.set_text_color(255, 255, 255)
-        self.set_font("Arial", "B", 16)
-        self.cell(0, 10, tr_fix("SMK YATIRIM | YESIL DONUSUM ANALIZI"), ln=True, align="C")
-        self.set_font("Arial", "I", 10)
-        self.cell(0, 5, tr_fix("SKDM Risk ve GES Yatirim Fizibilite Raporu"), ln=True, align="C")
+# --- 2. PROFESYONEL PDF SINIFI ---
+class SMK_PDF(FPDF):
+    def add_header(self, logo_bytes, firma_adi):
+        if logo_bytes:
+            with open("temp_logo.png", "wb") as f:
+                f.write(logo_bytes)
+            self.image("temp_logo.png", 10, 8, 30)
+        
+        self.set_font("Arial", "B", 14)
+        self.set_text_color(20, 40, 65)
+        self.cell(0, 10, tr_fix(f"{firma_adi} - STRATEJIK KARBON RAPORU"), ln=True, align="R")
+        self.set_font("Arial", "I", 9)
+        self.cell(0, 10, tr_fix("SMK YATIRIM Analiz Servisi"), ln=True, align="R")
         self.ln(20)
 
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("Arial", "I", 8)
-        self.set_text_color(150, 150, 150)
-        tarih = datetime.datetime.now().strftime('%d/%m/%Y')
-        self.cell(0, 10, f"Rapor Tarihi: {tarih} | Sayfa {self.page_no()}", align="C")
+# --- 3. GİRİŞ EKRANI ---
+if not st.session_state['logged_in']:
+    st.title("🛡️ SMK Karbon Portalı - Giriş")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        f_ad = st.text_input("Şirketinizin Tam Adı")
+        f_logo = st.file_uploader("Şirket Logonuzu Yükleyin (PNG/JPG)", type=['png', 'jpg'])
+    with col_b:
+        st.info("Bu panel üzerinden şirketinizin tüm tesislerini harita üzerinde işaretleyebilir ve AB uyumlu karbon raporu alabilirsiniz.")
+        if st.button("Sistemi Başlat"):
+            if f_ad:
+                st.session_state['user_data']['firma'] = f_ad
+                if f_logo:
+                    st.session_state['user_data']['logo_bytes'] = f_logo.getvalue()
+                st.session_state['logged_in'] = True
+                st.rerun()
+            else:
+                st.error("Lütfen şirket adını giriniz.")
 
-def generate_pdf(veriler):
-    pdf = SMK_Report()
-    pdf.add_page()
+# --- 4. ANA DASHBOARD ---
+else:
+    st.sidebar.title(st.session_state['user_data']['firma'])
+    if st.session_state['user_data']['logo_bytes']:
+        st.sidebar.image(st.session_state['user_data']['logo_bytes'])
     
-    # --- 1. KURUMSAL ÖZET ---
-    pdf.set_text_color(20, 40, 80)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, tr_fix("1. ANALIZ OZETI"), ln=True)
-    pdf.set_font("Arial", "", 10)
-    pdf.set_text_color(0, 0, 0)
-    
-    # Bilgi Kutusu
-    pdf.set_fill_color(245, 245, 245)
-    pdf.cell(95, 8, tr_fix(f"Analiz Edilen Firma: {veriler['firma']}"), 0, 0, 'L', True)
-    pdf.cell(95, 8, tr_fix(f"Sektor: {veriler['sektor']}"), 0, 1, 'L', True)
-    pdf.ln(5)
+    if st.sidebar.button("🔴 Çıkış Yap"):
+        st.session_state['logged_in'] = False
+        st.session_state['user_data']['tesisler'] = []
+        st.rerun()
 
-    # --- 2. KARBON VE VERGI TABLOSU ---
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 10, tr_fix("2. KARBON AYAK IZI VE VERGI PROJEKSIYONU"), ln=True)
-    
-    # Tablo Başlıkları
-    pdf.set_fill_color(10, 30, 60)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(100, 10, "Parametre", 1, 0, 'C', True)
-    pdf.cell(90, 10, "Deger", 1, 1, 'C', True)
-    
-    # Tablo İçeriği
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", "", 10)
-    data = [
-        ("Yillik Toplam Emisyon", f"{veriler['total_co2']:.2f} tCO2"),
-        ("GES Kaynakli Karbon Tasarrufu", f"{veriler['co2_saved']:.2f} tCO2"),
-        ("SKDM Karbon Vergisi (Yillik)", f"EUR {veriler['tax']:.2f}"),
-        ("GES Vergi Avantaji", f"EUR {veriler['tax_saving']:.2f}"),
-        ("Yatirim Geri Donus Suresi (ROI)", f"{veriler['roi']:.1f} Yil")
-    ]
-    
-    for row in data:
-        pdf.cell(100, 10, tr_fix(row[0]), 1)
-        pdf.cell(90, 10, tr_fix(row[1]), 1, 1, 'C')
+    tab1, tab2 = st.tabs(["📍 Tesis Ekle & Harita", "📊 Portföy ve Rapor"])
 
-    # --- 3. STRATEJIK TAVSIYELER ---
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 12)
-    pdf.set_text_color(20, 40, 80)
-    pdf.cell(0, 10, tr_fix("3. STRATEJIK YOL HARITASI"), ln=True)
-    pdf.set_font("Arial", "", 10)
-    pdf.set_text_color(0, 0, 0)
-    
-    tavsiye = (
-        f"Yapilan analiz sonucunda, GES yatirimi ile karbon yoğunluğunun %{veriler['reduction_pct']:.1f} oraninda "
-        f"dusurulebilecegi gorulmektedir. Mevcut karbon fiyati olan EUR {veriler['c_price']} baz alindiginda, "
-        f"yatirimin yillik toplam ekonomik katkisi EUR {veriler['total_gain']:.2f} seviyesindedir. "
-        "AB SKDM mevzuati geregi, bu sertifikalandirilmis tasarruf ihracat maliyetlerinizi dogrudan dusurecektir."
-    )
-    pdf.multi_cell(0, 7, tr_fix(tavsiye))
-    
-    return pdf.output(dest="S").encode("latin-1", "ignore")
+    with tab1:
+        st.subheader("Haritadan Tesis Konumu Seçin")
+        col_harita, col_detay = st.columns([2, 1])
+        
+        with col_harita:
+            # Türkiye Haritası
+            m = folium.Map(location=[39.0, 35.0], zoom_start=6)
+            m.add_child(folium.LatLngPopup())
+            harita_verisi = st_folium(m, height=400, width=700)
+            
+            lat = harita_verisi['last_clicked']['lat'] if harita_verisi['last_clicked'] else 39.0
+            lng = harita_verisi['last_clicked']['lng'] if harita_verisi['last_clicked'] else 35.0
+            st.success(f"Seçilen Konum: {lat:.4f}, {lng:.4f}")
 
-# --- STREAMLIT ARAYÜZÜ (HESAPLAMA DAHİL) ---
-st.set_page_config(page_title="SMK YATIRIM", layout="centered")
-st.title("🛡️ Profesyonel Karbon Raporlama")
+        with col_detay:
+            t_adi = st.text_input("Tesis Adı (Örn: İstanbul Fabrika)")
+            t_emisyon = st.number_input("Yıllık Emisyon (Ton CO2)", min_value=0, value=1000)
+            t_ges = st.selectbox("Güneş Enerjisi (GES)", ["Mevcut Değil", "Mevcut"])
+            
+            if st.button("Tesisi Listeye Ekle"):
+                st.session_state['user_data']['tesisler'].append({
+                    "Ad": t_adi, "Emisyon": t_emisyon, "GES": t_ges, "Lat": lat, "Lng": lng
+                })
+                st.toast("Tesis Kaydedildi!")
 
-with st.expander("📊 Tesis ve Yatırım Verilerini Girin", expanded=True):
-    c1, c2 = st.columns(2)
-    with c1:
-        firma = st.text_input("Firma Adı", "SMK Tekstil A.Ş.")
-        sektor = st.selectbox("Sektör", ["Demir-Çelik", "Alüminyum", "Tekstil", "Gübre"])
-        elec = st.number_input("Yıllık Elektrik (kWh)", value=500000)
-    with c2:
-        ges_yield = st.number_input("Yıllık GES Üretimi (kWh)", value=200000)
-        ges_cost = st.number_input("GES Yatırım Bedeli (€)", value=120000)
-        c_price = st.slider("Karbon Fiyatı (€/Ton)", 60, 150, 85)
-
-# Hesaplamalar
-e_emi = (elec * 0.45) / 1000
-co2_saved = (ges_yield * 0.45) / 1000
-net_co2 = e_emi - co2_saved
-tax = net_co2 * c_price
-tax_saving = co2_saved * c_price
-total_gain = tax_saving + (ges_yield * 0.15) # Enerji tasarrufu dahil
-roi = ges_cost / total_gain if total_gain > 0 else 0
-
-st.divider()
-
-# Rapor Hazırlama Verisi
-report_payload = {
-    "firma": firma, "sektor": sektor, "total_co2": net_co2, 
-    "co2_saved": co2_saved, "tax": tax, "tax_saving": tax_saving,
-    "roi": roi, "reduction_pct": (co2_saved/e_emi)*100, 
-    "total_gain": total_gain, "c_price": c_price
-}
-
-if st.button("📄 PROFESYONEL PDF RAPORU OLUSTUR"):
-    pdf_out = generate_pdf(report_payload)
-    st.download_button(
-        label="📥 Raporu İndir (PDF)",
-        data=pdf_out,
-        file_name=f"SMK_Analiz_{firma}.pdf",
-        mime="application/pdf"
-    )
-    st.success("Rapor başarıyla oluşturuldu!")
+    with tab2:
+        if not st.session_state['user_data']['tesisler']:
+            st.warning("Henüz hiç tesis eklemediniz.")
+        else:
+            st.subheader("Tesis Portföyü")
+            tesisler_df = pd.DataFrame(st.session_state['user_data']['tesisler'])
+            st.table(tesisler_df)
+            
+            toplam_co2 = tesisler_df["Emisyon"].sum()
+            st.metric("Tüm Tesislerin Toplam Emisyonu", f"{toplam_co2:,} tCO2")
+            
+            if st.button("📄 Profesyonel PDF Raporu Oluştur"):
+                pdf = SMK_PDF()
+                pdf.add_page()
+                pdf.add_header(st.session_state['user_data']['logo_bytes'], st.session_state['user_data']['firma'])
+                
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 10, tr_fix("KURUMSAL TESIS ANALIZI"), ln=True)
+                pdf.ln(5)
+                
+                # Tablo Yapısı
+                pdf.set_fill_color(240, 240, 240)
+                pdf.set_font("Arial", "B", 10)
+                pdf.cell(60, 10, "Tesis Adi", 1, 0, 'C', True)
+                pdf.cell(50, 10, "Emisyon (tCO2)", 1, 0, 'C', True)
+                pdf.cell(80, 10, "Konum (Enlem/Boylam)", 1, 1, 'C', True)
+                
+                pdf.set_font("Arial", "", 10)
+                for t in st.session_state['user_data']['tesisler']:
+                    pdf.cell(60, 10, tr_fix(t['Ad']), 1)
+                    pdf.cell(50, 10, f"{t['Emisyon']:,}", 1, 0, 'C')
+                    pdf.cell(80, 10, f"{t['Lat']:.3f} / {t['Lng']:.3f}", 1, 1, 'C')
+                
+                pdf.ln(10)
+                pdf.set_font("Arial", "B", 11)
+                pdf.cell(0, 10, tr_fix(f"TOPLAM KARBON YUKU: {toplam_co2:,} tCO2"), ln=True)
+                
+                pdf_dosyasi = pdf.output(dest="S").encode("latin-1", "ignore")
+                st.download_button("📥 PDF Raporunu Bilgisayara İndir", pdf_dosyasi, "SMK_Rapor.pdf", "application/pdf")
