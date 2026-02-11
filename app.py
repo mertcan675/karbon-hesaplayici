@@ -1,116 +1,113 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import requests
 
-# --- AB STANDARTLARI VE GÖRSEL TEMA ---
-AB_STANDARDS = {
-    "Yakıt Tipleri": {
+# --- AB STANDARTLARI VERİLERİ ---
+AB_FACTORS = {
+    "Yakıt": {
         "Doğalgaz (MWh)": 0.202,
         "Linyit Kömürü (Ton)": 1.012,
         "İthal Kömür (Ton)": 2.420,
         "Motorin (Litre)": 0.00268,
         "Fuel-Oil (Ton)": 3.120
     },
-    "Sektörel Katsayılar": {
+    "Sektör": {
         "Demir-Çelik": 1.9, "Alüminyum": 4.5, "Çimento": 0.9, "Gübre": 2.1, "Hidrojen": 11.0
     }
 }
 
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title="SMK YATIRIM | Premium Analytics", layout="wide")
 
-# --- CUSTOM CSS (Daha şık görünüm için) ---
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #142841; color: white; }
-    </style>
-    """, unsafe_content_allowed=True)
-
+# --- ANA PROGRAM ---
 def main():
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
 
-    # Sol Panel
-    st.sidebar.markdown(f"<h1 style='text-align: center; color: #142841;'>SMK YATIRIM</h1>", unsafe_content_allowed=True)
-    st.sidebar.markdown("<p style='text-align: center; font-size: 0.8em;'>STRATEJİK ANALİZ PORTALI</p>", unsafe_content_allowed=True)
+    # Sol Panel - Görsel Hatalar Düzeltildi
+    st.sidebar.title("🏢 SMK YATIRIM")
+    st.sidebar.caption("STRATEJİK KARBON ANALİZ PORTALI")
     st.sidebar.divider()
    
-    choice = st.sidebar.radio("Menü", ["Giriş Yap", "Ücretsiz Kayıt Ol"])
+    choice = st.sidebar.radio("Ana Menü", ["Giriş Yap", "Ücretsiz Kayıt Ol"])
 
+    # --- 1. KAYIT EKRANI ---
     if choice == "Ücretsiz Kayıt Ol":
         st.title("📝 Kurumsal Kayıt Paneli")
-        with st.container():
-            with st.form("kayit"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    email = st.text_input("E-posta")
-                    firma = st.text_input("Firma Adı")
-                with c2:
-                    tel = st.text_input("Telefon")
-                    sektor = st.selectbox("Sektör", list(AB_STANDARDS["Sektörel Katsayılar"].keys()))
-               
-                if st.form_submit_button("Kayıt Ol ve Analizi Başlat"):
-                    requests.post("https://formspree.io/f/xreaepjw", json={"Firma": firma, "Email": email, "Tel": tel})
-                    st.success("Kaydınız alındı. Giriş sekmesine geçebilirsiniz.")
+        with st.form("kayit_formu"):
+            col1, col2 = st.columns(2)
+            with col1:
+                email = st.text_input("Kurumsal E-posta")
+                firma = st.text_input("Firma Tam Adı")
+                tel = st.text_input("İletişim Numarası")
+            with col2:
+                sektor = st.selectbox("Faaliyet Sektörü", list(AB_FACTORS["Sektör"].keys()))
+                konum = st.text_input("Tesis Konumu (Şehir)")
+                sifre = st.text_input("Şifre Belirleyin", type='password')
+           
+            if st.form_submit_button("Hesabı Oluştur"):
+                # Formspree Bağlantısı (Senin ID'n aktif)
+                requests.post("https://formspree.io/f/xreaepjw",
+                             json={"Firma": firma, "Email": email, "Tel": tel, "Sektor": sektor, "Konum": konum})
+                st.success("Kaydınız başarıyla SMK veri merkezine iletildi. Şimdi giriş yapabilirsiniz.")
 
+    # --- 2. GİRİŞ EKRANI ---
     elif choice == "Giriş Yap":
-        st.title("🔐 Üye Portalı")
-        user = st.sidebar.text_input("Kullanıcı")
+        st.title("🔐 Üye Girişi")
+        user = st.sidebar.text_input("Kullanıcı Adı (E-posta)")
         pwd = st.sidebar.text_input("Şifre", type='password')
         if st.sidebar.button("Sisteme Eriş"):
             st.session_state['logged_in'] = True
             st.rerun()
 
+    # --- 3. ANALİZ PANELİ (GİRİŞ YAPILINCA) ---
     if st.session_state['logged_in']:
         st.title("🛡️ Stratejik Karbon Dashboard")
        
-        # Üst Veri Girişi
-        with st.expander("⚙️ Veri Giriş Parametreleri", expanded=True):
+        # Veri Giriş Alanı
+        with st.container():
+            st.subheader("⚙️ Operasyonel Veriler")
             v1, v2, v3, v4 = st.columns(4)
-            prod = v1.number_input("Yıllık Üretim (Ton)", value=1000)
-            fuel_t = v2.selectbox("Yakıt Tipi", list(AB_STANDARDS["Yakıt Tipleri"].keys()))
-            fuel_a = v3.number_input("Yakıt Miktarı", value=500)
-            elec = v4.number_input("Elektrik (kWh)", value=150000)
+            prod = v1.number_input("Üretim (Ton)", min_value=1, value=1000)
+            f_type = v2.selectbox("Yakıt Tipi", list(AB_FACTORS["Yakıt"].keys()))
+            f_amt = v3.number_input("Yakıt Tüketimi", min_value=1, value=500)
+            elec = v4.number_input("Elektrik (kWh)", min_value=1, value=150000)
 
-        # Hesaplamalar
-        fuel_emi = fuel_a * AB_STANDARDS["Yakıt Tipleri"][fuel_t]
-        elec_emi = (elec * 0.45) / 1000
+        # Profesyonel Hesaplama
+        fuel_emi = f_amt * AB_FACTORS["Yakıt"][f_type]
+        elec_emi = (elec * 0.45) / 1000 # TR Ortalama Faktörü
         total_co2 = fuel_emi + elec_emi
-        cost = total_co2 * 85
+        cost = total_co2 * 85 # Varsayılan ETS Fiyatı
 
-        # --- GÖRSEL KARTLAR ---
+        # --- GÖRSEL METRİKLER ---
         st.divider()
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3 = st.columns(3)
         m1.metric("Toplam Emisyon", f"{total_co2:,.1f} tCO2")
-        m2.metric("CBAM Vergi Riski", f"€ {cost:,.0f}")
-        m3.metric("Karbon Yoğunluğu", f"{total_co2/prod:,.2f}")
-        m4.metric("ETS Tahmini", "€ 85.00", "+5.2%")
+        m2.metric("CBAM Maliyet Riski", f"€ {cost:,.0f}")
+        m3.metric("Birim Yoğunluk", f"{total_co2/prod:,.2f} tCO2/Ton")
 
-        # --- PROFESYONEL GRAFİKLER ---
+        # --- ETKİLEŞİMLİ GRAFİKLER ---
         st.divider()
         g1, g2 = st.columns(2)
 
         with g1:
-            st.markdown("### 🎯 Emisyon Kaynakları")
+            st.markdown("### 🎯 Kaynak Dağılımı")
             fig_pie = px.pie(
                 values=[fuel_emi, elec_emi],
                 names=['Yakıt (Kapsam 1)', 'Elektrik (Kapsam 2)'],
                 hole=0.4,
                 color_discrete_sequence=['#142841', '#FFC000']
             )
-            fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with g2:
-            st.markdown("### 📈 2026-2034 Maliyet Projeksiyonu")
+            st.markdown("### 📈 Vergi Yükü Projeksiyonu")
             years = [2026, 2028, 2030, 2032, 2034]
-            costs = [cost * r for r in [0.025, 0.1, 0.485, 0.75, 1.0]]
-            fig_line = px.area(x=years, y=costs, labels={'x':'Yıl', 'y':'Maliyet (€)'})
-            fig_line.update_traces(line_color='#142841', fillcolor='rgba(20, 40, 65, 0.2)')
-            st.plotly_chart(fig_line, use_container_width=True)
+            tax_vals = [cost * r for r in [0.025, 0.1, 0.48, 0.75, 1.0]]
+            fig_area = px.area(x=years, y=tax_vals, labels={'x':'Yıl', 'y':'Maliyet (€)'})
+            fig_area.update_traces(line_color='#142841')
+            st.plotly_chart(fig_area, use_container_width=True)
 
         if st.sidebar.button("🔴 Güvenli Çıkış"):
             st.session_state['logged_in'] = False
@@ -118,4 +115,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
